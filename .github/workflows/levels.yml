@@ -2,62 +2,115 @@ name: Build & Publish Levels
 
 on:
   workflow_dispatch:
-  # add schedules later if you want (UTC):
-  # schedule:
-  #   - cron: '05 21 * * 1-5'   # ~17:05 ET (EDT)
-  #   - cron: '05 22 * * 1-5'   # ~17:05 ET (EST)
-  #   - cron: '46 12 * * 1-5'   # ~08:46 ET (EDT)
-  #   - cron: '46 13 * * 1-5'   # ~08:46 ET (EST)
+    inputs:
+      force_run:
+        description: "Bypass time gate"
+        type: boolean
+        default: false
+  schedule:
+    # 08:46, 10:46, 17:00 ET on weekdays (adjust if needed)
+    - cron: "46 12 * * 1-5"  # 08:46 ET
+    - cron: "46 14 * * 1-5"  # 10:46 ET
+    - cron: "00 21 * * 1-5"  # 17:00 ET
+
+env:
+  WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_KEY }}
 
 jobs:
   levels:
     runs-on: ubuntu-latest
-
-    # run every "run:" step *inside* options_levels/
-    defaults:
-      run:
-        shell: bash
-        working-directory: options_levels
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Compute NY gate
+        id: gate
+        shell: bash
+        run: |
+          FORCE="${{ github.event.inputs.force_run || 'false' }}"
+          NY_TIME=$(TZ=America/New_York date +%H:%M)
+          H=$(TZ=America/New_York date +%H)
+          M=$(TZ=America/New_York date +%M)
+          MIN=$((10#$H*60 + 10#$M))   # minutes since midnight ET
+
+          ok=false
+          in_range(){ [ "$MIN" -ge "$1" ] && [ "$MIN" -le "$2" ]; }
+          # 08:46–08:56, 10:46–10:56, 17:00–17:10 ET
+          in_range 526 536 && ok=true
+          in_range 646 656 && ok=true
+          in_range 1020 1030 && ok=true
+          [ "$FORCE" = "true" ] && ok=true
+
+          echo "RUN_OK=$ok" >> "$GITHUB_ENV"
+          echo "NY_TIME=$NY_TIME ET" >> "$GITHUB_ENV"
+          echo "FORCE=$FORCE" >> "$GITHUB_ENV"
+          echo "Gate -> RUN_OK=$ok (NY $NY_TIME, force=$FORCE)"
+
+      - name: Debug
+        run: |
+          echo "RUN_OK=$RUN_OK"
+          echo "NY_TIME=$NY_TIME"
+          [ -n "$WEBHOOK" ] && echo "WEBHOOK_SET=yes" || echo "WEBHOOK_SET=no"
+
+      - name: Set up Python
+        if: env.RUN_OK == 'true'
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Python deps
-        run: pip install -r requirements.txt
-
-      # (optional but handy if you authored scripts on Windows)
-      - name: Normalize line endings
+      - name: Install deps
+        if: env.RUN_OK == 'true'
         run: |
-          sudo apt-get update -y && sudo apt-get install -y dos2unix
-          dos2unix scripts/*.sh configs/*.sh || true
+          python -m pip install --upgrade pip
+          pip install numpy pandas requests
 
-      - name: Run generator
-        run: bash scripts/run_levels.sh
+      - name: Run SPX
+        if: env.RUN_OK == 'true'
+        run: |
+          python options_levels_v7t.py \
+            --symbols SPX \
+            --out out --raw raw --raw-ladders raw \
+            --basis "" \
+            --wall-fallback on \
+            --em-mult 3.0 --em-floor-spx 100 \
+            --smooth-win 3 --vt-inner 0.30 --vt-outer 1.55 \
+            --oi-floor-spx 200 --plot-count-spx 16 --min-spacing-spx 10 \
+            --lg-fwhm-frac 0.78 --wall-fwhm-frac 0.65 \
+            --box-hw-cap-spx 2.5 --box-hw-frac-em-spx 0.07
+
+      - name: Run NDX
+        if: env.RUN_OK == 'true'
+        run: |
+          python options_levels_v7t.py \
+            --symbols NDX \
+            --out out --raw raw --raw-ladders raw \
+            --basis "" \
+            --wall-fallback on \
+            --em-mult 3.0 --em-floor-ndx 250 \
+            --smooth-win 3 --vt-inner 0.30 --vt-outer 1.55 \
+            --oi-floor-ndx 350 --plot-count-ndx 16 --min-spacing-ndx 40 \
+            --lg-fwhm-frac 0.78 --wall-fwhm-frac 0.65 \
+            --box-hw-cap-ndx 15 --box-hw-frac-em-ndx 0.08
 
       - name: Upload artifacts
+        if: env.RUN_OK == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: options-levels-${{ github.run_id }}
+          name: levels
           path: |
-            artifacts/*.zip
-            out/*.csv
-            out/*.txt
-          retention-days: 14
+            out/levels_*
+            out/levels_pine_*
+            out/diagnostics.json
 
-      - name: Post to Discord (optional)
-        if: ${{ secrets.DISCORD_WEBHOOK_KEY != '' }}
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_KEY }}
+      - name: Post to Discord
+        if: env.RUN_OK == 'true' && env.WEBHOOK != ''
+        shell: bash
         run: |
-          MSG="Options levels • $(date -u +'%Y-%m-%d %H:%MZ')"
+          echo "Posting summary to Discord (NY $NY_TIME)…"
           curl -sS -X POST "$WEBHOOK" -H "Content-Type: application/json" \
-            -d "$(jq -n --arg c "$MSG" '{content:$c}')"
-          # send latest files as attachments (optional)
+            -d "{\"content\":\"Options Levels • run ${{ github.run_id }} • NY $NY_TIME\"}"
+
           for f in $(ls -t out/levels_* out/levels_pine_* 2>/dev/null | head -8); do
+            echo "Uploading: $f"
             curl -sS -X POST "$WEBHOOK" \
               -F "payload_json={\"content\":\"$(basename "$f")\"}" \
               -F "file=@$f"
