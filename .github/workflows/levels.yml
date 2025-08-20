@@ -1,0 +1,64 @@
+name: Build & Publish Levels
+
+on:
+  workflow_dispatch:
+  # add schedules later if you want (UTC):
+  # schedule:
+  #   - cron: '05 21 * * 1-5'   # ~17:05 ET (EDT)
+  #   - cron: '05 22 * * 1-5'   # ~17:05 ET (EST)
+  #   - cron: '46 12 * * 1-5'   # ~08:46 ET (EDT)
+  #   - cron: '46 13 * * 1-5'   # ~08:46 ET (EST)
+
+jobs:
+  levels:
+    runs-on: ubuntu-latest
+
+    # run every "run:" step *inside* options_levels/
+    defaults:
+      run:
+        shell: bash
+        working-directory: options_levels
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      # (optional but handy if you authored scripts on Windows)
+      - name: Normalize line endings
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y dos2unix
+          dos2unix scripts/*.sh configs/*.sh || true
+
+      - name: Run generator
+        run: bash scripts/run_levels.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: options-levels-${{ github.run_id }}
+          path: |
+            artifacts/*.zip
+            out/*.csv
+            out/*.txt
+          retention-days: 14
+
+      - name: Post to Discord (optional)
+        if: ${{ secrets.DISCORD_WEBHOOK_KEY != '' }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_KEY }}
+        run: |
+          MSG="Options levels • $(date -u +'%Y-%m-%d %H:%MZ')"
+          curl -sS -X POST "$WEBHOOK" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg c "$MSG" '{content:$c}')"
+          # send latest files as attachments (optional)
+          for f in $(ls -t out/levels_* out/levels_pine_* 2>/dev/null | head -8); do
+            curl -sS -X POST "$WEBHOOK" \
+              -F "payload_json={\"content\":\"$(basename "$f")\"}" \
+              -F "file=@$f"
+          done
