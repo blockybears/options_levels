@@ -69,7 +69,7 @@ jobs:
       - name: Post to Discord (optional)
         if: steps.gate.outputs.run_ok == 'true' && env.WEBHOOK != ''
         env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_KEY }}
         run: |
           MSG="Options Levels • ${{ steps.gate.outputs.ny_time }}"
           curl -sS -X POST "$WEBHOOK" -H "Content-Type: application/json" \
