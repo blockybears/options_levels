@@ -64,13 +64,12 @@ jobs:
           pip install numpy pandas requests
 
       - name: Run SPX
-        if: env.RUN_OK == 'true'
+        if: ${{ steps.gate.outputs.run_ok == 'true' || github.event.inputs.force_run == 'true' }}
         run: |
-          python options_levels.py \
+          python src/options_levels.py \
             --symbols SPX \
             --out out --raw raw --raw-ladders raw \
-            --basis "" \
-            --wall-fallback on \
+            --basis "" --wall-fallback on \
             --em-mult 3.0 --em-floor-spx 100 \
             --smooth-win 3 --vt-inner 0.30 --vt-outer 1.55 \
             --oi-floor-spx 200 --plot-count-spx 16 --min-spacing-spx 10 \
@@ -78,13 +77,12 @@ jobs:
             --box-hw-cap-spx 2.5 --box-hw-frac-em-spx 0.07
 
       - name: Run NDX
-        if: env.RUN_OK == 'true'
+        if: ${{ steps.gate.outputs.run_ok == 'true' || github.event.inputs.force_run == 'true' }}
         run: |
-          python options_levels.py \
+          python src/options_levels.py \
             --symbols NDX \
             --out out --raw raw --raw-ladders raw \
-            --basis "" \
-            --wall-fallback on \
+            --basis "" --wall-fallback on \
             --em-mult 3.0 --em-floor-ndx 250 \
             --smooth-win 3 --vt-inner 0.30 --vt-outer 1.55 \
             --oi-floor-ndx 350 --plot-count-ndx 16 --min-spacing-ndx 40 \
