@@ -1,0 +1,81 @@
+name: Build & Publish Levels
+
+on:
+  workflow_dispatch:  # allow manual runs
+  # We fire several UTC crons to straddle DST; a gate below keeps only 08:46, 10:46, 17:00 New York.
+  schedule:
+    - cron: '44 12 * * 1-5'   # ~08:44 ET when EDT
+    - cron: '44 13 * * 1-5'   # ~08:44 ET when EST
+    - cron: '44 14 * * 1-5'   # ~10:44 ET when EDT
+    - cron: '44 15 * * 1-5'   # ~10:44 ET when EST
+    - cron: '02 21 * * 1-5'   # ~17:02 ET when EDT
+    - cron: '02 22 * * 1-5'   # ~17:02 ET when EST
+
+jobs:
+  levels:
+    runs-on: ubuntu-latest
+
+    # All steps run inside the nested folder:
+    defaults:
+      run:
+        shell: bash
+        working-directory: options_levels
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      # Gate so we only run at 08:46, 10:46, 17:00 NY time (± a couple minutes safety).
+      - name: Gate by New York time
+        id: gate
+        run: |
+          python - <<'PY' > /tmp/gate.out
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          ny = datetime.now(ZoneInfo("America/New_York"))
+          targets = ["08:46","10:46","17:00"]
+          ok = any(abs((ny - ny.replace(hour=int(t[:2]), minute=int(t[3:]), second=0, microsecond=0)).total_seconds()) <= 150 for t in targets)
+          print("run_ok=" + ("true" if ok else "false"))
+          print("ny_time=" + ny.strftime("%Y-%m-%d %H:%M:%S %Z"))
+          PY
+          cat /tmp/gate.out | tee /dev/stderr | grep -E '^(run_ok|ny_time)=' >> "$GITHUB_OUTPUT"
+
+      - name: Normalize line endings (Windows-edited scripts)
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y dos2unix
+          dos2unix scripts/*.sh || true
+
+      - name: Run generator
+        if: steps.gate.outputs.run_ok == 'true'
+        run: bash scripts/run_levels.sh
+
+      - name: Upload artifacts
+        if: steps.gate.outputs.run_ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: options-levels-${{ github.run_id }}
+          path: |
+            artifacts/*.zip
+            out/*.csv
+            out/*.txt
+          retention-days: 14
+
+      - name: Post to Discord (optional)
+        if: steps.gate.outputs.run_ok == 'true' && env.WEBHOOK != ''
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          MSG="Options Levels • ${{ steps.gate.outputs.ny_time }}"
+          curl -sS -X POST "$WEBHOOK" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg c "$MSG" '{content:$c}')"
+          for f in $(ls -t out/levels_* out/levels_pine_* 2>/dev/null | head -8); do
+            curl -sS -X POST "$WEBHOOK" \
+              -F "payload_json={\"content\":\"$(basename "$f")\"}" \
+              -F "file=@$f"
+          done
