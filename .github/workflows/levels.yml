@@ -66,7 +66,7 @@ jobs:
       - name: Run SPX
         if: env.RUN_OK == 'true'
         run: |
-          python options_levels_v7t.py \
+          python options_levels.py \
             --symbols SPX \
             --out out --raw raw --raw-ladders raw \
             --basis "" \
@@ -80,7 +80,7 @@ jobs:
       - name: Run NDX
         if: env.RUN_OK == 'true'
         run: |
-          python options_levels_v7t.py \
+          python options_levels.py \
             --symbols NDX \
             --out out --raw raw --raw-ladders raw \
             --basis "" \
