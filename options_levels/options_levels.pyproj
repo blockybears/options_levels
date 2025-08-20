@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>8ba1d90d-9eed-4632-9f96-e22bfdd817b1</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>options_levels.py</StartupFile>
+    <StartupFile>src\options_levels.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -21,7 +21,20 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="options_levels.py" />
+    <Compile Include="src\options_levels.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="configs\" />
+    <Folder Include="raw\" />
+    <Folder Include="scripts\" />
+    <Folder Include="out\" />
+    <Folder Include="src\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="configs\spx.cmd" />
+    <Content Include="configs\ndx.cmd" />
+    <Content Include="requirements.txt" />
+    <Content Include="scripts\run_levels.sh" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

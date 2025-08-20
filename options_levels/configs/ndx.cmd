@@ -1,0 +1,1 @@
+python options_levels_v7t.py --symbols NDX --out out --raw raw --raw-ladders raw --basis "" --wall-fallback on --em-mult 3.0 --em-floor-ndx 250 --smooth-win 3 --vt-inner 0.30 --vt-outer 1.55 --oi-floor-ndx 350 --plot-count-ndx 16 --min-spacing-ndx 40 --lg-fwhm-frac 0.78 --wall-fwhm-frac 0.65 --box-hw-cap-ndx 15 --box-hw-frac-em-ndx 0.08
